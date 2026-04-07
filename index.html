@@ -246,6 +246,9 @@ function drawMouse(x, y, t) {
 }
 
 function drawCat(cat, t) {
+    const type = cat.type || 'cat';
+    const s = type === 'tiger' ? 1.6 : type === 'lion' ? 1.25 : 1.0;
+
     ctx.save();
     ctx.translate(cat.x, cat.y);
 
@@ -256,133 +259,248 @@ function drawCat(cat, t) {
     const facing = (cat.state === 'fleeing') ? angle + Math.PI : angle;
     const dir = Math.cos(facing) > 0 ? 1 : -1;
 
+    // Hit flash overlay
+    if (cat.hitFlash > 0) {
+        ctx.globalAlpha = 0.6 + cat.hitFlash;
+    }
+
     // Walk bounce
-    const walkBounce = cat.state === 'approaching' ? Math.sin(t * 8 + cat.animOffset) * 3 : 0;
+    const walkBounce = cat.state === 'approaching' ? Math.sin(t * 8 + cat.animOffset) * 3 * s : 0;
+
+    const bodyColor = cat.color || '#e8820c';
+    const strokeColor = type === 'tiger' ? '#222' : type === 'lion' ? '#9a6b20' : '#c06a00';
 
     // Body
-    ctx.fillStyle = cat.color || '#e8820c';
+    ctx.fillStyle = bodyColor;
     ctx.beginPath();
-    ctx.ellipse(0, walkBounce, 20, 14, 0, 0, Math.PI * 2);
+    ctx.ellipse(0, walkBounce, 20 * s, 14 * s, 0, 0, Math.PI * 2);
     ctx.fill();
-    ctx.strokeStyle = '#c06a00';
+    ctx.strokeStyle = strokeColor;
     ctx.lineWidth = 1;
     ctx.stroke();
 
-    // Stripes
-    ctx.strokeStyle = '#c06a00';
-    ctx.lineWidth = 1.5;
-    for (let i = -2; i <= 2; i++) {
-        ctx.beginPath();
-        ctx.moveTo(i * 6, walkBounce - 10);
-        ctx.lineTo(i * 6 + 2, walkBounce + 5);
-        ctx.stroke();
+    // Stripes (tiger gets bold black stripes, others get subtle ones)
+    if (type === 'tiger') {
+        ctx.strokeStyle = '#111';
+        ctx.lineWidth = 2.5 * s;
+        for (let i = -3; i <= 3; i++) {
+            ctx.beginPath();
+            ctx.moveTo(i * 6 * s, walkBounce - 12 * s);
+            ctx.lineTo(i * 6 * s + 2 * s, walkBounce + 6 * s);
+            ctx.stroke();
+        }
+    } else {
+        ctx.strokeStyle = strokeColor;
+        ctx.lineWidth = 1.5;
+        for (let i = -2; i <= 2; i++) {
+            ctx.beginPath();
+            ctx.moveTo(i * 6 * s, walkBounce - 10 * s);
+            ctx.lineTo(i * 6 * s + 2 * s, walkBounce + 5 * s);
+            ctx.stroke();
+        }
+    }
+
+    // Lion mane
+    if (type === 'lion') {
+        const maneX = dir * 14 * s;
+        const maneY = walkBounce - 10 * s;
+        ctx.fillStyle = '#c08020';
+        for (let a = 0; a < Math.PI * 2; a += 0.4) {
+            const mr = 14 * s + Math.sin(a * 5 + t * 2) * 2;
+            ctx.beginPath();
+            ctx.ellipse(
+                maneX + Math.cos(a) * mr * 0.6,
+                maneY + Math.sin(a) * mr * 0.6,
+                5 * s, 4 * s,
+                a, 0, Math.PI * 2
+            );
+            ctx.fill();
+        }
+        // Darker mane layer
+        ctx.fillStyle = '#a06818';
+        for (let a = 0.2; a < Math.PI * 2; a += 0.6) {
+            const mr = 11 * s + Math.sin(a * 3 + t * 1.5) * 2;
+            ctx.beginPath();
+            ctx.ellipse(
+                maneX + Math.cos(a) * mr * 0.5,
+                maneY + Math.sin(a) * mr * 0.5,
+                4 * s, 3 * s,
+                a, 0, Math.PI * 2
+            );
+            ctx.fill();
+        }
     }
 
     // Head
-    ctx.fillStyle = cat.color || '#e8820c';
+    ctx.fillStyle = bodyColor;
     ctx.beginPath();
-    ctx.arc(dir * 14, walkBounce - 10, 10, 0, Math.PI * 2);
+    ctx.arc(dir * 14 * s, walkBounce - 10 * s, 10 * s, 0, Math.PI * 2);
     ctx.fill();
-    ctx.strokeStyle = '#c06a00';
+    ctx.strokeStyle = strokeColor;
     ctx.lineWidth = 1;
     ctx.stroke();
 
+    // Tiger white chin
+    if (type === 'tiger') {
+        ctx.fillStyle = '#f5f0e0';
+        ctx.beginPath();
+        ctx.ellipse(dir * 14 * s, walkBounce - 4 * s, 6 * s, 4 * s, 0, 0, Math.PI * 2);
+        ctx.fill();
+    }
+
     // Ears
-    ctx.fillStyle = cat.color || '#e8820c';
+    ctx.fillStyle = bodyColor;
     ctx.beginPath();
-    ctx.moveTo(dir * 8, walkBounce - 18);
-    ctx.lineTo(dir * 4, walkBounce - 28);
-    ctx.lineTo(dir * 14, walkBounce - 22);
+    ctx.moveTo(dir * 8 * s, walkBounce - 18 * s);
+    ctx.lineTo(dir * 4 * s, walkBounce - 28 * s);
+    ctx.lineTo(dir * 14 * s, walkBounce - 22 * s);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = strokeColor;
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.moveTo(dir * 18 * s, walkBounce - 18 * s);
+    ctx.lineTo(dir * 22 * s, walkBounce - 28 * s);
+    ctx.lineTo(dir * 24 * s, walkBounce - 18 * s);
     ctx.closePath();
     ctx.fill();
     ctx.stroke();
 
-    ctx.beginPath();
-    ctx.moveTo(dir * 18, walkBounce - 18);
-    ctx.lineTo(dir * 22, walkBounce - 28);
-    ctx.lineTo(dir * 24, walkBounce - 18);
-    ctx.closePath();
-    ctx.fill();
-    ctx.stroke();
+    // Tiger ear stripes
+    if (type === 'tiger') {
+        ctx.fillStyle = '#fff';
+        ctx.beginPath();
+        ctx.arc(dir * 7 * s, walkBounce - 24 * s, 3 * s, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(dir * 21 * s, walkBounce - 24 * s, 3 * s, 0, Math.PI * 2);
+        ctx.fill();
+    }
 
-    // Inner ears
-    ctx.fillStyle = '#ffb0b0';
-    ctx.beginPath();
-    ctx.moveTo(dir * 8, walkBounce - 19);
-    ctx.lineTo(dir * 6, walkBounce - 26);
-    ctx.lineTo(dir * 13, walkBounce - 21);
-    ctx.closePath();
-    ctx.fill();
+    // Inner ears (not for lion — hidden by mane)
+    if (type !== 'lion') {
+        ctx.fillStyle = '#ffb0b0';
+        ctx.beginPath();
+        ctx.moveTo(dir * 8 * s, walkBounce - 19 * s);
+        ctx.lineTo(dir * 6 * s, walkBounce - 26 * s);
+        ctx.lineTo(dir * 13 * s, walkBounce - 21 * s);
+        ctx.closePath();
+        ctx.fill();
+    }
 
-    // Angry eyes
-    ctx.fillStyle = '#aaff00';
+    // Eyes
+    const eyeColor = type === 'tiger' ? '#ffcc00' : type === 'lion' ? '#ddaa00' : '#aaff00';
+    ctx.fillStyle = eyeColor;
     ctx.beginPath();
-    ctx.arc(dir * 10, walkBounce - 12, 3.5, 0, Math.PI * 2);
-    ctx.arc(dir * 18, walkBounce - 12, 3.5, 0, Math.PI * 2);
+    ctx.arc(dir * 10 * s, walkBounce - 12 * s, 3.5 * s, 0, Math.PI * 2);
+    ctx.arc(dir * 18 * s, walkBounce - 12 * s, 3.5 * s, 0, Math.PI * 2);
     ctx.fill();
 
     // Pupils (slit)
     ctx.fillStyle = '#111';
     ctx.beginPath();
-    ctx.ellipse(dir * 10, walkBounce - 12, 1, 3, 0, 0, Math.PI * 2);
-    ctx.ellipse(dir * 18, walkBounce - 12, 1, 3, 0, 0, Math.PI * 2);
+    ctx.ellipse(dir * 10 * s, walkBounce - 12 * s, 1 * s, 3 * s, 0, 0, Math.PI * 2);
+    ctx.ellipse(dir * 18 * s, walkBounce - 12 * s, 1 * s, 3 * s, 0, 0, Math.PI * 2);
     ctx.fill();
 
     // Angry eyebrows
-    ctx.strokeStyle = '#8b4513';
-    ctx.lineWidth = 2;
+    ctx.strokeStyle = type === 'tiger' ? '#111' : '#8b4513';
+    ctx.lineWidth = 2 * s;
     ctx.beginPath();
-    ctx.moveTo(dir * 6, walkBounce - 17);
-    ctx.lineTo(dir * 12, walkBounce - 15);
+    ctx.moveTo(dir * 6 * s, walkBounce - 17 * s);
+    ctx.lineTo(dir * 12 * s, walkBounce - 15 * s);
     ctx.stroke();
     ctx.beginPath();
-    ctx.moveTo(dir * 22, walkBounce - 17);
-    ctx.lineTo(dir * 16, walkBounce - 15);
+    ctx.moveTo(dir * 22 * s, walkBounce - 17 * s);
+    ctx.lineTo(dir * 16 * s, walkBounce - 15 * s);
     ctx.stroke();
 
     // Nose
     ctx.fillStyle = '#ff6b6b';
     ctx.beginPath();
-    ctx.arc(dir * 14, walkBounce - 7, 2, 0, Math.PI * 2);
+    ctx.arc(dir * 14 * s, walkBounce - 7 * s, 2 * s, 0, Math.PI * 2);
     ctx.fill();
 
     // Mouth (angry)
-    ctx.strokeStyle = '#8b4513';
-    ctx.lineWidth = 1;
+    ctx.strokeStyle = type === 'tiger' ? '#111' : '#8b4513';
+    ctx.lineWidth = 1 * s;
     ctx.beginPath();
-    ctx.arc(dir * 14, walkBounce - 4, 4, 0, Math.PI);
+    ctx.arc(dir * 14 * s, walkBounce - 4 * s, 4 * s, 0, Math.PI);
     ctx.stroke();
 
     // Legs
     const legAnim = Math.sin(t * 10 + cat.animOffset);
-    ctx.fillStyle = cat.color || '#e8820c';
-    ctx.strokeStyle = '#c06a00';
+    ctx.fillStyle = bodyColor;
+    ctx.strokeStyle = strokeColor;
     ctx.lineWidth = 1;
     // Front legs
     ctx.beginPath();
-    ctx.ellipse(dir * 10 + legAnim * 3, walkBounce + 14, 4, 6, 0, 0, Math.PI * 2);
+    ctx.ellipse(dir * 10 * s + legAnim * 3 * s, walkBounce + 14 * s, 4 * s, 6 * s, 0, 0, Math.PI * 2);
     ctx.fill(); ctx.stroke();
     ctx.beginPath();
-    ctx.ellipse(dir * 4 - legAnim * 3, walkBounce + 14, 4, 6, 0, 0, Math.PI * 2);
+    ctx.ellipse(dir * 4 * s - legAnim * 3 * s, walkBounce + 14 * s, 4 * s, 6 * s, 0, 0, Math.PI * 2);
     ctx.fill(); ctx.stroke();
     // Back legs
     ctx.beginPath();
-    ctx.ellipse(-dir * 8 - legAnim * 3, walkBounce + 14, 4, 6, 0, 0, Math.PI * 2);
+    ctx.ellipse(-dir * 8 * s - legAnim * 3 * s, walkBounce + 14 * s, 4 * s, 6 * s, 0, 0, Math.PI * 2);
     ctx.fill(); ctx.stroke();
     ctx.beginPath();
-    ctx.ellipse(-dir * 14 + legAnim * 3, walkBounce + 14, 4, 6, 0, 0, Math.PI * 2);
+    ctx.ellipse(-dir * 14 * s + legAnim * 3 * s, walkBounce + 14 * s, 4 * s, 6 * s, 0, 0, Math.PI * 2);
     ctx.fill(); ctx.stroke();
 
     // Tail
-    ctx.strokeStyle = cat.color || '#e8820c';
-    ctx.lineWidth = 3;
+    ctx.strokeStyle = bodyColor;
+    ctx.lineWidth = 3 * s;
     ctx.lineCap = 'round';
-    const tailW = Math.sin(t * 5 + cat.animOffset) * 10;
+    const tailW = Math.sin(t * 5 + cat.animOffset) * 10 * s;
     ctx.beginPath();
-    ctx.moveTo(-dir * 18, walkBounce);
-    ctx.bezierCurveTo(-dir * 28, walkBounce - 5, -dir * 35 + tailW, walkBounce - 15, -dir * 30 + tailW, walkBounce - 25);
+    ctx.moveTo(-dir * 18 * s, walkBounce);
+    ctx.bezierCurveTo(-dir * 28 * s, walkBounce - 5 * s, -dir * 35 * s + tailW, walkBounce - 15 * s, -dir * 30 * s + tailW, walkBounce - 25 * s);
     ctx.stroke();
+    // Tiger tail stripes
+    if (type === 'tiger') {
+        ctx.strokeStyle = '#111';
+        ctx.lineWidth = 2 * s;
+        ctx.setLineDash([4 * s, 4 * s]);
+        ctx.beginPath();
+        ctx.moveTo(-dir * 18 * s, walkBounce);
+        ctx.bezierCurveTo(-dir * 28 * s, walkBounce - 5 * s, -dir * 35 * s + tailW, walkBounce - 15 * s, -dir * 30 * s + tailW, walkBounce - 25 * s);
+        ctx.stroke();
+        ctx.setLineDash([]);
+    }
     ctx.lineCap = 'butt';
+
+    ctx.globalAlpha = 1;
+
+    // HP bar (for multi-hit enemies)
+    if (cat.maxHp > 1 && cat.state === 'approaching') {
+        const barW = 30 * s;
+        const barH = 4;
+        const barX = -barW / 2;
+        const barY = -28 * s;
+        // Background
+        ctx.fillStyle = 'rgba(0,0,0,0.6)';
+        ctx.fillRect(barX, barY, barW, barH);
+        // Fill
+        const hpPct = cat.hp / cat.maxHp;
+        ctx.fillStyle = hpPct > 0.5 ? '#4f4' : hpPct > 0.25 ? '#ff0' : '#f44';
+        ctx.fillRect(barX, barY, barW * hpPct, barH);
+        // Border
+        ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+        ctx.lineWidth = 0.5;
+        ctx.strokeRect(barX, barY, barW, barH);
+    }
+
+    // Hit flash white overlay
+    if (cat.hitFlash > 0) {
+        ctx.globalAlpha = cat.hitFlash * 2;
+        ctx.fillStyle = '#fff';
+        ctx.beginPath();
+        ctx.ellipse(0, walkBounce, 22 * s, 16 * s, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalAlpha = 1;
+    }
 
     ctx.restore();
 }
@@ -797,7 +915,7 @@ function drawTitleScreen(t) {
     // Subtitle
     ctx.fillStyle = '#ffa500';
     ctx.font = '20px monospace';
-    ctx.fillText('Protect the mouse from the ginger cats!', canvas.width / 2, canvas.height / 2 - 80);
+    ctx.fillText('Protect the mouse from cats, lions & tigers!', canvas.width / 2, canvas.height / 2 - 80);
 
     // Draw big mouse
     drawMouse(canvas.width / 2, canvas.height / 2 - 10, t);
@@ -807,7 +925,7 @@ function drawTitleScreen(t) {
     ctx.font = '16px monospace';
     const instructions = [
         'Click to shoot water at evil cats',
-        'Orange cats = bad (steal lives)',
+        'Cats=1 hit, Lions=3 hits, Tigers=5 hits',
         'Black & white cat Zora = good (gives lives)',
         'Don\'t accidentally scare Zora!',
         'Water is limited - watch your supply!',
@@ -854,7 +972,7 @@ function drawGameOverScreen(t) {
     ctx.font = '16px monospace';
     const mins = Math.floor(state.time / 60);
     const secs = Math.floor(state.time % 60);
-    ctx.fillText(`Time: ${mins}:${secs.toString().padStart(2, '0')}  |  Cats scared: ${state.catsScared}`, canvas.width / 2, canvas.height / 2 + 30);
+    ctx.fillText(`Time: ${mins}:${secs.toString().padStart(2, '0')}  |  Enemies scared: ${state.catsScared}`, canvas.width / 2, canvas.height / 2 + 30);
 
     // Restart prompt
     const blink = Math.sin(t * 3) > 0;
@@ -870,7 +988,7 @@ function drawGameOverScreen(t) {
 
 // ==================== GAME LOGIC ====================
 
-function spawnEnemy() {
+function spawnEnemy(forceType) {
     const edge = Math.floor(Math.random() * 4);
     let x, y;
     const margin = 60;
@@ -884,15 +1002,45 @@ function spawnEnemy() {
     const baseSpeed = 50 + Math.random() * 30;
     const speedMult = 1 + state.time / 300;
 
+    // Choose enemy type based on time elapsed
+    let type = forceType || 'cat';
+    if (!forceType) {
+        const roll = Math.random();
+        if (state.time > 90 && roll < 0.18) type = 'tiger';
+        else if (state.time > 30 && roll < 0.35) type = 'lion';
+    }
+
+    let size, hp, color, speed;
+    if (type === 'tiger') {
+        size = 36;
+        hp = 5;
+        color = `hsl(${20 + Math.random() * 10}, ${85 + Math.random() * 15}%, ${48 + Math.random() * 10}%)`;
+        speed = (baseSpeed * 0.7) * Math.min(speedMult, 2.0);
+    } else if (type === 'lion') {
+        size = 28;
+        hp = 3;
+        color = `hsl(${40 + Math.random() * 10}, ${70 + Math.random() * 20}%, ${55 + Math.random() * 15}%)`;
+        speed = (baseSpeed * 0.85) * Math.min(speedMult, 2.2);
+    } else {
+        size = 22;
+        hp = 1;
+        color = `hsl(${25 + Math.random() * 15}, ${80 + Math.random() * 20}%, ${50 + Math.random() * 15}%)`;
+        speed = baseSpeed * Math.min(speedMult, 2.5);
+    }
+
     state.enemies.push({
         x, y,
-        speed: baseSpeed * Math.min(speedMult, 2.5),
+        speed,
         state: 'approaching',
         fleeDir: { x: 0, y: 0 },
         fleeTimer: 0,
         animOffset: Math.random() * Math.PI * 2,
-        size: 22,
-        color: `hsl(${25 + Math.random() * 15}, ${80 + Math.random() * 20}%, ${50 + Math.random() * 15}%)`,
+        size,
+        hp,
+        maxHp: hp,
+        type,
+        color,
+        hitFlash: 0,
     });
 }
 
@@ -1037,6 +1185,8 @@ function update(dt) {
     for (let i = state.enemies.length - 1; i >= 0; i--) {
         const e = state.enemies[i];
 
+        if (e.hitFlash > 0) e.hitFlash -= dt * 3;
+
         if (e.state === 'approaching') {
             const dx = state.mousePos.x - e.x;
             const dy = state.mousePos.y - e.y;
@@ -1091,26 +1241,40 @@ function update(dt) {
             if (e.state !== 'approaching') continue;
 
             if (circlesCollide(p.x, p.y, 6, e.x, e.y, e.size)) {
-                // Hit enemy
-                e.state = 'fleeing';
-                const dx = e.x - p.x;
-                const dy = e.y - p.y;
-                const d = Math.sqrt(dx * dx + dy * dy) || 1;
-                e.fleeDir = { x: dx / d, y: dy / d };
-                e.fleeTimer = 2.0;
-
-                state.combo++;
-                const points = 100 * state.combo;
-                state.score += points;
-                state.catsScared++;
-
+                e.hp--;
+                e.hitFlash = 0.3;
                 spawnParticles(p.x, p.y, '#66bbff', 8, 1);
-                spawnParticles(e.x, e.y, '#ff8800', 5, 0.5);
-                addFloatingText(e.x, e.y - 30, `+${points}`, '#fff', 18);
 
-                if (state.combo === 5) addFloatingText(canvas.width / 2, canvas.height / 2 - 60, 'Nice!', '#ff0', 28);
-                if (state.combo === 10) addFloatingText(canvas.width / 2, canvas.height / 2 - 60, 'Awesome!', '#f80', 32);
-                if (state.combo === 20) addFloatingText(canvas.width / 2, canvas.height / 2 - 60, 'LEGENDARY!', '#f0f', 40);
+                if (e.hp <= 0) {
+                    // Enemy defeated — flee
+                    e.state = 'fleeing';
+                    const dx = e.x - p.x;
+                    const dy = e.y - p.y;
+                    const d = Math.sqrt(dx * dx + dy * dy) || 1;
+                    e.fleeDir = { x: dx / d, y: dy / d };
+                    e.fleeTimer = 2.0;
+
+                    state.combo++;
+                    const basePoints = e.type === 'tiger' ? 500 : e.type === 'lion' ? 300 : 100;
+                    const points = basePoints * state.combo;
+                    state.score += points;
+                    state.catsScared++;
+
+                    spawnParticles(e.x, e.y, '#ff8800', 5, 0.5);
+                    addFloatingText(e.x, e.y - 30, `+${points}`, '#fff', 18);
+
+                    if (state.combo === 5) addFloatingText(canvas.width / 2, canvas.height / 2 - 60, 'Nice!', '#ff0', 28);
+                    if (state.combo === 10) addFloatingText(canvas.width / 2, canvas.height / 2 - 60, 'Awesome!', '#f80', 32);
+                    if (state.combo === 20) addFloatingText(canvas.width / 2, canvas.height / 2 - 60, 'LEGENDARY!', '#f0f', 40);
+                } else {
+                    // Hit but not defeated — knockback + feedback
+                    const dx = e.x - p.x;
+                    const dy = e.y - p.y;
+                    const d = Math.sqrt(dx * dx + dy * dy) || 1;
+                    e.x += (dx / d) * 15;
+                    e.y += (dy / d) * 15;
+                    addFloatingText(e.x, e.y - 30, `${e.hp}/${e.maxHp}`, '#ffaa44', 14);
+                }
 
                 hit = true;
                 break;
@@ -1149,12 +1313,13 @@ function update(dt) {
         if (e.state !== 'approaching') continue;
 
         if (circlesCollide(state.mousePos.x, state.mousePos.y, mouseHitR, e.x, e.y, e.size)) {
-            state.lives--;
+            const dmg = e.type === 'tiger' ? 3 : e.type === 'lion' ? 2 : 1;
+            state.lives -= dmg;
             state.combo = 0;
-            state.screenShake = 1.0;
+            state.screenShake = dmg * 0.5;
             state.enemies.splice(i, 1);
-            spawnParticles(state.mousePos.x, state.mousePos.y, '#ff4444', 12, 1.5);
-            addFloatingText(state.mousePos.x, state.mousePos.y - 40, '-1 Life', '#ff4444', 24);
+            spawnParticles(state.mousePos.x, state.mousePos.y, '#ff4444', 12 * dmg, 1.5);
+            addFloatingText(state.mousePos.x, state.mousePos.y - 40, `-${dmg} ${dmg > 1 ? 'Lives' : 'Life'}`, '#ff4444', 24);
 
             if (state.lives <= 0) {
                 state.screen = 'gameover';

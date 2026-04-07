@@ -17,22 +17,11 @@ canvas { display: block; cursor: none; }
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 
-// Cyprus outline (normalized 0-1 coordinates)
-const CYPRUS_OUTLINE = [
-    [0.08, 0.45], [0.06, 0.38], [0.07, 0.30], [0.10, 0.25],
-    [0.14, 0.22], [0.18, 0.18], [0.23, 0.16], [0.28, 0.14],
-    [0.33, 0.13], [0.38, 0.15], [0.43, 0.14], [0.48, 0.12],
-    [0.53, 0.10], [0.58, 0.08], [0.63, 0.06], [0.68, 0.05],
-    [0.73, 0.04], [0.78, 0.03], [0.82, 0.05], [0.86, 0.08],
-    [0.89, 0.12], [0.91, 0.16], [0.93, 0.14], [0.95, 0.11],
-    [0.97, 0.09], [0.98, 0.12], [0.96, 0.16], [0.93, 0.19],
-    [0.90, 0.21], [0.87, 0.18], [0.84, 0.16], [0.80, 0.18],
-    [0.76, 0.22], [0.72, 0.26], [0.68, 0.30], [0.65, 0.35],
-    [0.62, 0.40], [0.60, 0.46], [0.58, 0.52], [0.55, 0.56],
-    [0.50, 0.60], [0.45, 0.62], [0.40, 0.64], [0.35, 0.66],
-    [0.30, 0.68], [0.25, 0.70], [0.20, 0.68], [0.16, 0.65],
-    [0.13, 0.62], [0.10, 0.58], [0.08, 0.53], [0.07, 0.48],
-];
+// Cyprus satellite image (NASA, public domain)
+const cyprusImg = new Image();
+cyprusImg.src = 'cyprus.jpg';
+let cyprusImgLoaded = false;
+cyprusImg.onload = () => { cyprusImgLoaded = true; state.bgCache = null; };
 
 // ==================== GAME STATE ====================
 let state = {};
@@ -55,6 +44,10 @@ function initState() {
         spawnTimer: 2.0,
         zoraTimer: 15 + Math.random() * 10,
         zoraAlertTimer: 0,
+        water: 20,
+        waterMax: 20,
+        waterRegen: 2.5,
+        waterRegenAccum: 0,
         combo: 0,
         screenShake: 0,
         lastTimestamp: 0,
@@ -103,44 +96,26 @@ function renderBackground() {
         octx.stroke();
     }
 
-    // Island
-    const mapW = offscreen.width * 0.85;
-    const mapH = offscreen.height * 0.75;
-    const mapX = (offscreen.width - mapW) / 2;
-    const mapY = (offscreen.height - mapH) / 2;
+    // Draw Cyprus satellite image
+    if (cyprusImgLoaded) {
+        const imgAspect = cyprusImg.width / cyprusImg.height;
+        const canvasAspect = offscreen.width / offscreen.height;
+        let drawW, drawH;
+        if (canvasAspect > imgAspect) {
+            drawW = offscreen.width * 0.92;
+            drawH = drawW / imgAspect;
+        } else {
+            drawH = offscreen.height * 0.85;
+            drawW = drawH * imgAspect;
+        }
+        const drawX = (offscreen.width - drawW) / 2;
+        const drawY = (offscreen.height - drawH) / 2;
+        octx.drawImage(cyprusImg, drawX, drawY, drawW, drawH);
 
-    octx.beginPath();
-    CYPRUS_OUTLINE.forEach((p, i) => {
-        const x = mapX + p[0] * mapW;
-        const y = mapY + p[1] * mapH;
-        if (i === 0) octx.moveTo(x, y);
-        else octx.lineTo(x, y);
-    });
-    octx.closePath();
-
-    // Island gradient
-    const islandGrad = octx.createRadialGradient(
-        offscreen.width * 0.5, offscreen.height * 0.4, 0,
-        offscreen.width * 0.5, offscreen.height * 0.4, mapW * 0.5
-    );
-    islandGrad.addColorStop(0, '#c8b888');
-    islandGrad.addColorStop(0.5, '#d4c494');
-    islandGrad.addColorStop(1, '#b8a878');
-    octx.fillStyle = islandGrad;
-    octx.fill();
-
-    // Island border
-    octx.strokeStyle = '#9a8a6a';
-    octx.lineWidth = 2;
-    octx.stroke();
-
-    // Beach glow
-    octx.shadowColor = '#e8d5a3';
-    octx.shadowBlur = 15;
-    octx.strokeStyle = 'rgba(232, 213, 163, 0.3)';
-    octx.lineWidth = 4;
-    octx.stroke();
-    octx.shadowBlur = 0;
+        // Slight dark overlay so game elements pop
+        octx.fillStyle = 'rgba(0, 20, 40, 0.15)';
+        octx.fillRect(0, 0, offscreen.width, offscreen.height);
+    }
 
     state.bgCache = offscreen;
 }
@@ -572,17 +547,28 @@ function drawWater(proj, t) {
 }
 
 function drawCrosshair(x, y) {
-    ctx.strokeStyle = 'rgba(100, 200, 255, 0.7)';
-    ctx.lineWidth = 1.5;
+    const gap = 6;
+    const len = 11;
 
-    // Outer circle
+    // Dark outline layer
+    ctx.strokeStyle = 'rgba(0, 0, 0, 0.8)';
+    ctx.lineWidth = 3.5;
     ctx.beginPath();
-    ctx.arc(x, y, 15, 0, Math.PI * 2);
+    ctx.arc(x, y, 16, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(x - gap, y); ctx.lineTo(x - gap - len, y);
+    ctx.moveTo(x + gap, y); ctx.lineTo(x + gap + len, y);
+    ctx.moveTo(x, y - gap); ctx.lineTo(x, y - gap - len);
+    ctx.moveTo(x, y + gap); ctx.lineTo(x, y + gap + len);
     ctx.stroke();
 
-    // Crosshair lines
-    const gap = 5;
-    const len = 10;
+    // Bright white inner layer
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 1.8;
+    ctx.beginPath();
+    ctx.arc(x, y, 16, 0, Math.PI * 2);
+    ctx.stroke();
     ctx.beginPath();
     ctx.moveTo(x - gap, y); ctx.lineTo(x - gap - len, y);
     ctx.moveTo(x + gap, y); ctx.lineTo(x + gap + len, y);
@@ -591,18 +577,24 @@ function drawCrosshair(x, y) {
     ctx.stroke();
 
     // Center dot
-    ctx.fillStyle = 'rgba(100, 200, 255, 0.9)';
+    ctx.fillStyle = '#000';
+    ctx.beginPath();
+    ctx.arc(x, y, 3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#ff3333';
     ctx.beginPath();
     ctx.arc(x, y, 2, 0, Math.PI * 2);
     ctx.fill();
 
-    // Water drop shape
-    ctx.fillStyle = 'rgba(100, 200, 255, 0.4)';
-    ctx.beginPath();
-    ctx.moveTo(x, y - 20);
-    ctx.bezierCurveTo(x - 5, y - 14, x - 5, y - 10, x, y - 8);
-    ctx.bezierCurveTo(x + 5, y - 10, x + 5, y - 14, x, y - 20);
-    ctx.fill();
+    // Water level indicator around crosshair
+    if (state.screen === 'playing') {
+        const pct = state.water / state.waterMax;
+        ctx.strokeStyle = pct > 0.25 ? 'rgba(80, 180, 255, 0.7)' : 'rgba(255, 80, 80, 0.7)';
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.arc(x, y, 22, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * pct);
+        ctx.stroke();
+    }
 }
 
 function drawHUD() {
@@ -673,6 +665,36 @@ function drawHUD() {
 
     ctx.shadowBlur = 0;
     ctx.textAlign = 'left';
+
+    // Water bar
+    const barX = 25;
+    const barY = 55;
+    const barW = 140;
+    const barH = 14;
+    const waterPct = state.water / state.waterMax;
+    // Background
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
+    ctx.beginPath();
+    ctx.roundRect(barX, barY, barW, barH, 4);
+    ctx.fill();
+    // Fill
+    ctx.fillStyle = waterPct > 0.25 ? '#44aaff' : '#ff4444';
+    ctx.beginPath();
+    ctx.roundRect(barX + 1, barY + 1, (barW - 2) * waterPct, barH - 2, 3);
+    ctx.fill();
+    // Border
+    ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.roundRect(barX, barY, barW, barH, 4);
+    ctx.stroke();
+    // Label
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 10px monospace';
+    ctx.shadowColor = '#000';
+    ctx.shadowBlur = 2;
+    ctx.fillText(`WATER ${state.water}/${state.waterMax}`, barX + 4, barY + 11);
+    ctx.shadowBlur = 0;
 
     // Time
     ctx.fillStyle = 'rgba(255,255,255,0.5)';
@@ -752,6 +774,7 @@ function drawTitleScreen(t) {
         'Orange cats = bad (steal lives)',
         'Black & white cat Zora = good (gives lives)',
         'Don\'t accidentally scare Zora!',
+        'Water is limited - watch your supply!',
     ];
     instructions.forEach((line, i) => {
         ctx.fillText(line, canvas.width / 2, canvas.height / 2 + 50 + i * 25);
@@ -865,6 +888,8 @@ function spawnZora() {
 }
 
 function shootWater() {
+    if (state.water < 1) return;
+
     const mx = state.mousePos.x;
     const my = state.mousePos.y;
     const dx = state.cursorPos.x - mx;
@@ -872,14 +897,13 @@ function shootWater() {
     const dist = Math.sqrt(dx * dx + dy * dy);
     if (dist < 1) return;
 
+    state.water--;
     const speed = 500;
     state.projectiles.push({
         x: mx,
         y: my,
         vx: (dx / dist) * speed,
         vy: (dy / dist) * speed,
-        lifetime: 2.0,
-        age: 0,
         trail: [],
     });
 }
@@ -949,6 +973,15 @@ function update(dt) {
     // Screen shake decay
     if (state.screenShake > 0) state.screenShake -= dt * 8;
 
+    // Water regeneration
+    state.waterRegenAccum += dt;
+    const regenInterval = 1 / state.waterRegen;
+    while (state.waterRegenAccum >= regenInterval && state.water < state.waterMax) {
+        state.water++;
+        state.waterRegenAccum -= regenInterval;
+    }
+    if (state.water >= state.waterMax) state.waterRegenAccum = 0;
+
     // Update projectiles
     for (let i = state.projectiles.length - 1; i >= 0; i--) {
         const p = state.projectiles[i];
@@ -957,10 +990,8 @@ function update(dt) {
 
         p.x += p.vx * dt;
         p.y += p.vy * dt;
-        p.age += dt;
 
-        if (p.age >= p.lifetime ||
-            p.x < -50 || p.x > canvas.width + 50 ||
+        if (p.x < -50 || p.x > canvas.width + 50 ||
             p.y < -50 || p.y > canvas.height + 50) {
             state.projectiles.splice(i, 1);
         }

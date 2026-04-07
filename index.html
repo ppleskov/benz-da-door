@@ -23,6 +23,13 @@ cyprusImg.src = 'cyprus.jpg';
 let cyprusImgLoaded = false;
 cyprusImg.onload = () => { cyprusImgLoaded = true; state.bgCache = null; };
 
+// ==================== TOUCH DETECTION ====================
+let isTouchDevice = false;
+window.addEventListener('touchstart', function onFirstTouch() {
+    isTouchDevice = true;
+    window.removeEventListener('touchstart', onFirstTouch);
+}, { passive: true });
+
 // ==================== GAME STATE ====================
 let state = {};
 
@@ -952,16 +959,23 @@ function drawTitleScreen(t) {
 
     ctx.textAlign = 'center';
 
+    // Responsive font sizes
+    const small = canvas.width < 600;
+    const titleSize = small ? 28 : 48;
+    const subSize = small ? 14 : 20;
+    const instrSize = small ? 12 : 16;
+    const startSize = small ? 18 : 22;
+
     // Title
     ctx.fillStyle = '#fff';
-    ctx.font = 'bold 48px monospace';
+    ctx.font = `bold ${titleSize}px monospace`;
     ctx.shadowColor = '#000';
     ctx.shadowBlur = 8;
     ctx.fillText('Cyprus Mouse Defense', canvas.width / 2, canvas.height / 2 - 120);
 
     // Subtitle
     ctx.fillStyle = '#ffa500';
-    ctx.font = '20px monospace';
+    ctx.font = `${subSize}px monospace`;
     ctx.fillText('Protect the mouse from cats, lions & tigers!', canvas.width / 2, canvas.height / 2 - 80);
 
     // Draw big mouse
@@ -969,9 +983,9 @@ function drawTitleScreen(t) {
 
     // Instructions
     ctx.fillStyle = '#ccc';
-    ctx.font = '16px monospace';
+    ctx.font = `${instrSize}px monospace`;
     const instructions = [
-        isTouchDevice ? 'Tap to shoot water' : 'Click to shoot water, RMB to throw souvlaki bait',
+        isTouchDevice ? 'Tap to shoot water' : 'Click to shoot, RMB for souvlaki bait',
         'Cats=1 hit, Lions=3 hits, Tigers=5 hits',
         'Shoot pickups: KEO, Souvlaki, Easter Egg',
         'Black & white cat Zora = good (gives lives)',
@@ -985,8 +999,8 @@ function drawTitleScreen(t) {
     const blink = Math.sin(t * 3) > 0;
     if (blink) {
         ctx.fillStyle = '#4af';
-        ctx.font = 'bold 22px monospace';
-        ctx.fillText(isTouchDevice ? 'Tap to Start' : 'Press Enter to Start', canvas.width / 2, canvas.height / 2 + 180);
+        ctx.font = `bold ${startSize}px monospace`;
+        ctx.fillText(isTouchDevice ? 'Tap to Start' : 'Click or Enter to Start', canvas.width / 2, canvas.height / 2 + 180);
     }
 
     ctx.shadowBlur = 0;
@@ -1026,7 +1040,7 @@ function drawGameOverScreen(t) {
     if (blink) {
         ctx.fillStyle = '#4af';
         ctx.font = 'bold 20px monospace';
-        ctx.fillText(isTouchDevice ? 'Tap to Play Again' : 'Press Enter to Play Again', canvas.width / 2, canvas.height / 2 + 90);
+        ctx.fillText(isTouchDevice ? 'Tap to Play Again' : 'Click or Enter to Play Again', canvas.width / 2, canvas.height / 2 + 90);
     }
 
     ctx.shadowBlur = 0;
@@ -1864,8 +1878,6 @@ function gameLoop(timestamp) {
 
 // ==================== INPUT ====================
 
-const isTouchDevice = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
-
 function startGame() {
     if (state.screen === 'title') {
         state.screen = 'playing';
@@ -1916,11 +1928,13 @@ canvas.addEventListener('mousemove', (e) => {
 });
 
 canvas.addEventListener('click', (e) => {
-    if (state.screen === 'playing') {
-        state.cursorPos.x = e.clientX;
-        state.cursorPos.y = e.clientY;
-        shootWater();
+    if (state.screen !== 'playing') {
+        startGame();
+        return;
     }
+    state.cursorPos.x = e.clientX;
+    state.cursorPos.y = e.clientY;
+    shootWater();
 });
 
 window.addEventListener('keydown', (e) => {

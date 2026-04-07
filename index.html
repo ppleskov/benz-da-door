@@ -1,0 +1,1248 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cyprus Mouse Defense</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { width: 100%; height: 100%; overflow: hidden; background: #0a3d5c; }
+canvas { display: block; cursor: none; }
+</style>
+</head>
+<body>
+<canvas id="gameCanvas"></canvas>
+<script>
+// ==================== SETUP ====================
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+
+// Cyprus outline (normalized 0-1 coordinates)
+const CYPRUS_OUTLINE = [
+    [0.08, 0.45], [0.06, 0.38], [0.07, 0.30], [0.10, 0.25],
+    [0.14, 0.22], [0.18, 0.18], [0.23, 0.16], [0.28, 0.14],
+    [0.33, 0.13], [0.38, 0.15], [0.43, 0.14], [0.48, 0.12],
+    [0.53, 0.10], [0.58, 0.08], [0.63, 0.06], [0.68, 0.05],
+    [0.73, 0.04], [0.78, 0.03], [0.82, 0.05], [0.86, 0.08],
+    [0.89, 0.12], [0.91, 0.16], [0.93, 0.14], [0.95, 0.11],
+    [0.97, 0.09], [0.98, 0.12], [0.96, 0.16], [0.93, 0.19],
+    [0.90, 0.21], [0.87, 0.18], [0.84, 0.16], [0.80, 0.18],
+    [0.76, 0.22], [0.72, 0.26], [0.68, 0.30], [0.65, 0.35],
+    [0.62, 0.40], [0.60, 0.46], [0.58, 0.52], [0.55, 0.56],
+    [0.50, 0.60], [0.45, 0.62], [0.40, 0.64], [0.35, 0.66],
+    [0.30, 0.68], [0.25, 0.70], [0.20, 0.68], [0.16, 0.65],
+    [0.13, 0.62], [0.10, 0.58], [0.08, 0.53], [0.07, 0.48],
+];
+
+// ==================== GAME STATE ====================
+let state = {};
+
+function initState() {
+    state = {
+        screen: 'title',
+        lives: 3,
+        maxLives: 7,
+        score: 0,
+        highScore: parseInt(localStorage.getItem('cyprusMouseHighScore') || '0'),
+        time: 0,
+        mousePos: { x: canvas.width / 2, y: canvas.height / 2 },
+        cursorPos: { x: 0, y: 0 },
+        enemies: [],
+        zora: null,
+        projectiles: [],
+        particles: [],
+        floatingTexts: [],
+        spawnTimer: 2.0,
+        zoraTimer: 15 + Math.random() * 10,
+        zoraAlertTimer: 0,
+        combo: 0,
+        screenShake: 0,
+        lastTimestamp: 0,
+        catsScared: 0,
+        zoraEncounters: 0,
+        bgCache: null,
+    };
+}
+
+// ==================== RESIZE ====================
+function resizeCanvas() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+    state.mousePos.x = canvas.width / 2;
+    state.mousePos.y = canvas.height / 2;
+    state.bgCache = null;
+}
+window.addEventListener('resize', resizeCanvas);
+
+// ==================== BACKGROUND ====================
+function renderBackground() {
+    if (state.bgCache && state.bgCache.width === canvas.width && state.bgCache.height === canvas.height) return;
+
+    const offscreen = document.createElement('canvas');
+    offscreen.width = canvas.width;
+    offscreen.height = canvas.height;
+    const octx = offscreen.getContext('2d');
+
+    // Sea
+    const seaGrad = octx.createLinearGradient(0, 0, 0, offscreen.height);
+    seaGrad.addColorStop(0, '#0e5a7e');
+    seaGrad.addColorStop(1, '#0a3d5c');
+    octx.fillStyle = seaGrad;
+    octx.fillRect(0, 0, offscreen.width, offscreen.height);
+
+    // Waves
+    octx.strokeStyle = 'rgba(255,255,255,0.03)';
+    octx.lineWidth = 1;
+    for (let y = 0; y < offscreen.height; y += 30) {
+        octx.beginPath();
+        for (let x = 0; x < offscreen.width; x += 5) {
+            const yy = y + Math.sin(x * 0.02 + y * 0.1) * 5;
+            if (x === 0) octx.moveTo(x, yy);
+            else octx.lineTo(x, yy);
+        }
+        octx.stroke();
+    }
+
+    // Island
+    const mapW = offscreen.width * 0.85;
+    const mapH = offscreen.height * 0.75;
+    const mapX = (offscreen.width - mapW) / 2;
+    const mapY = (offscreen.height - mapH) / 2;
+
+    octx.beginPath();
+    CYPRUS_OUTLINE.forEach((p, i) => {
+        const x = mapX + p[0] * mapW;
+        const y = mapY + p[1] * mapH;
+        if (i === 0) octx.moveTo(x, y);
+        else octx.lineTo(x, y);
+    });
+    octx.closePath();
+
+    // Island gradient
+    const islandGrad = octx.createRadialGradient(
+        offscreen.width * 0.5, offscreen.height * 0.4, 0,
+        offscreen.width * 0.5, offscreen.height * 0.4, mapW * 0.5
+    );
+    islandGrad.addColorStop(0, '#c8b888');
+    islandGrad.addColorStop(0.5, '#d4c494');
+    islandGrad.addColorStop(1, '#b8a878');
+    octx.fillStyle = islandGrad;
+    octx.fill();
+
+    // Island border
+    octx.strokeStyle = '#9a8a6a';
+    octx.lineWidth = 2;
+    octx.stroke();
+
+    // Beach glow
+    octx.shadowColor = '#e8d5a3';
+    octx.shadowBlur = 15;
+    octx.strokeStyle = 'rgba(232, 213, 163, 0.3)';
+    octx.lineWidth = 4;
+    octx.stroke();
+    octx.shadowBlur = 0;
+
+    state.bgCache = offscreen;
+}
+
+// ==================== DRAWING FUNCTIONS ====================
+
+function drawMouse(x, y, t) {
+    const bob = Math.sin(t * 3) * 2;
+    const cy = y + bob;
+
+    ctx.save();
+
+    // Body
+    ctx.fillStyle = '#a0a0a0';
+    ctx.beginPath();
+    ctx.ellipse(x, cy, 22, 16, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#808080';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    // Belly
+    ctx.fillStyle = '#c0c0c0';
+    ctx.beginPath();
+    ctx.ellipse(x, cy + 3, 14, 10, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Left ear
+    ctx.fillStyle = '#a0a0a0';
+    ctx.beginPath();
+    ctx.ellipse(x - 14, cy - 14, 9, 10, -0.3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#808080';
+    ctx.stroke();
+    ctx.fillStyle = '#f0b0b0';
+    ctx.beginPath();
+    ctx.ellipse(x - 14, cy - 14, 6, 7, -0.3, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Right ear
+    ctx.fillStyle = '#a0a0a0';
+    ctx.beginPath();
+    ctx.ellipse(x + 14, cy - 14, 9, 10, 0.3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#808080';
+    ctx.stroke();
+    ctx.fillStyle = '#f0b0b0';
+    ctx.beginPath();
+    ctx.ellipse(x + 14, cy - 14, 6, 7, 0.3, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Eyes
+    ctx.fillStyle = '#222';
+    ctx.beginPath();
+    ctx.arc(x - 7, cy - 4, 3, 0, Math.PI * 2);
+    ctx.arc(x + 7, cy - 4, 3, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Eye highlights
+    ctx.fillStyle = '#fff';
+    ctx.beginPath();
+    ctx.arc(x - 6, cy - 5, 1.2, 0, Math.PI * 2);
+    ctx.arc(x + 8, cy - 5, 1.2, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Nose
+    ctx.fillStyle = '#ff9999';
+    ctx.beginPath();
+    ctx.moveTo(x, cy);
+    ctx.lineTo(x - 3, cy + 4);
+    ctx.lineTo(x + 3, cy + 4);
+    ctx.closePath();
+    ctx.fill();
+
+    // Whiskers
+    ctx.strokeStyle = '#888';
+    ctx.lineWidth = 0.8;
+    for (let side = -1; side <= 1; side += 2) {
+        for (let i = -1; i <= 1; i++) {
+            ctx.beginPath();
+            ctx.moveTo(x + side * 5, cy + 2);
+            ctx.lineTo(x + side * 25, cy + i * 5);
+            ctx.stroke();
+        }
+    }
+
+    // Tail
+    ctx.strokeStyle = '#f0b0b0';
+    ctx.lineWidth = 2.5;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(x, cy + 14);
+    const tailWave = Math.sin(t * 4) * 8;
+    ctx.bezierCurveTo(x - 10, cy + 30, x - 20 + tailWave, cy + 20, x - 30 + tailWave, cy + 10);
+    ctx.stroke();
+    ctx.lineCap = 'butt';
+
+    ctx.restore();
+}
+
+function drawCat(cat, t) {
+    ctx.save();
+    ctx.translate(cat.x, cat.y);
+
+    const angle = Math.atan2(
+        state.mousePos.y - cat.y,
+        state.mousePos.x - cat.x
+    );
+    const facing = (cat.state === 'fleeing') ? angle + Math.PI : angle;
+    const dir = Math.cos(facing) > 0 ? 1 : -1;
+
+    // Walk bounce
+    const walkBounce = cat.state === 'approaching' ? Math.sin(t * 8 + cat.animOffset) * 3 : 0;
+
+    // Body
+    ctx.fillStyle = cat.color || '#e8820c';
+    ctx.beginPath();
+    ctx.ellipse(0, walkBounce, 20, 14, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#c06a00';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    // Stripes
+    ctx.strokeStyle = '#c06a00';
+    ctx.lineWidth = 1.5;
+    for (let i = -2; i <= 2; i++) {
+        ctx.beginPath();
+        ctx.moveTo(i * 6, walkBounce - 10);
+        ctx.lineTo(i * 6 + 2, walkBounce + 5);
+        ctx.stroke();
+    }
+
+    // Head
+    ctx.fillStyle = cat.color || '#e8820c';
+    ctx.beginPath();
+    ctx.arc(dir * 14, walkBounce - 10, 10, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#c06a00';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    // Ears
+    ctx.fillStyle = cat.color || '#e8820c';
+    ctx.beginPath();
+    ctx.moveTo(dir * 8, walkBounce - 18);
+    ctx.lineTo(dir * 4, walkBounce - 28);
+    ctx.lineTo(dir * 14, walkBounce - 22);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.moveTo(dir * 18, walkBounce - 18);
+    ctx.lineTo(dir * 22, walkBounce - 28);
+    ctx.lineTo(dir * 24, walkBounce - 18);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    // Inner ears
+    ctx.fillStyle = '#ffb0b0';
+    ctx.beginPath();
+    ctx.moveTo(dir * 8, walkBounce - 19);
+    ctx.lineTo(dir * 6, walkBounce - 26);
+    ctx.lineTo(dir * 13, walkBounce - 21);
+    ctx.closePath();
+    ctx.fill();
+
+    // Angry eyes
+    ctx.fillStyle = '#aaff00';
+    ctx.beginPath();
+    ctx.arc(dir * 10, walkBounce - 12, 3.5, 0, Math.PI * 2);
+    ctx.arc(dir * 18, walkBounce - 12, 3.5, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Pupils (slit)
+    ctx.fillStyle = '#111';
+    ctx.beginPath();
+    ctx.ellipse(dir * 10, walkBounce - 12, 1, 3, 0, 0, Math.PI * 2);
+    ctx.ellipse(dir * 18, walkBounce - 12, 1, 3, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Angry eyebrows
+    ctx.strokeStyle = '#8b4513';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(dir * 6, walkBounce - 17);
+    ctx.lineTo(dir * 12, walkBounce - 15);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(dir * 22, walkBounce - 17);
+    ctx.lineTo(dir * 16, walkBounce - 15);
+    ctx.stroke();
+
+    // Nose
+    ctx.fillStyle = '#ff6b6b';
+    ctx.beginPath();
+    ctx.arc(dir * 14, walkBounce - 7, 2, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Mouth (angry)
+    ctx.strokeStyle = '#8b4513';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(dir * 14, walkBounce - 4, 4, 0, Math.PI);
+    ctx.stroke();
+
+    // Legs
+    const legAnim = Math.sin(t * 10 + cat.animOffset);
+    ctx.fillStyle = cat.color || '#e8820c';
+    ctx.strokeStyle = '#c06a00';
+    ctx.lineWidth = 1;
+    // Front legs
+    ctx.beginPath();
+    ctx.ellipse(dir * 10 + legAnim * 3, walkBounce + 14, 4, 6, 0, 0, Math.PI * 2);
+    ctx.fill(); ctx.stroke();
+    ctx.beginPath();
+    ctx.ellipse(dir * 4 - legAnim * 3, walkBounce + 14, 4, 6, 0, 0, Math.PI * 2);
+    ctx.fill(); ctx.stroke();
+    // Back legs
+    ctx.beginPath();
+    ctx.ellipse(-dir * 8 - legAnim * 3, walkBounce + 14, 4, 6, 0, 0, Math.PI * 2);
+    ctx.fill(); ctx.stroke();
+    ctx.beginPath();
+    ctx.ellipse(-dir * 14 + legAnim * 3, walkBounce + 14, 4, 6, 0, 0, Math.PI * 2);
+    ctx.fill(); ctx.stroke();
+
+    // Tail
+    ctx.strokeStyle = cat.color || '#e8820c';
+    ctx.lineWidth = 3;
+    ctx.lineCap = 'round';
+    const tailW = Math.sin(t * 5 + cat.animOffset) * 10;
+    ctx.beginPath();
+    ctx.moveTo(-dir * 18, walkBounce);
+    ctx.bezierCurveTo(-dir * 28, walkBounce - 5, -dir * 35 + tailW, walkBounce - 15, -dir * 30 + tailW, walkBounce - 25);
+    ctx.stroke();
+    ctx.lineCap = 'butt';
+
+    ctx.restore();
+}
+
+function drawZora(zora, t) {
+    ctx.save();
+    ctx.translate(zora.x, zora.y);
+
+    const angle = Math.atan2(state.mousePos.y - zora.y, state.mousePos.x - zora.x);
+    const facing = (zora.state === 'fleeing') ? angle + Math.PI : angle;
+    const dir = Math.cos(facing) > 0 ? 1 : -1;
+
+    const walkBounce = zora.state === 'approaching' ? Math.sin(t * 6 + zora.animOffset) * 2 : 0;
+
+    // Glow aura
+    const glowGrad = ctx.createRadialGradient(0, 0, 10, 0, 0, 40);
+    glowGrad.addColorStop(0, 'rgba(100, 255, 150, 0.15)');
+    glowGrad.addColorStop(1, 'rgba(100, 255, 150, 0)');
+    ctx.fillStyle = glowGrad;
+    ctx.beginPath();
+    ctx.arc(0, 0, 40, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Body - black
+    ctx.fillStyle = '#222';
+    ctx.beginPath();
+    ctx.ellipse(0, walkBounce, 18, 13, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // White belly patch
+    ctx.fillStyle = '#f5f5f5';
+    ctx.beginPath();
+    ctx.ellipse(0, walkBounce + 3, 10, 8, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // White chest
+    ctx.fillStyle = '#f5f5f5';
+    ctx.beginPath();
+    ctx.ellipse(dir * 8, walkBounce - 4, 7, 9, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Head - black
+    ctx.fillStyle = '#222';
+    ctx.beginPath();
+    ctx.arc(dir * 13, walkBounce - 9, 9, 0, Math.PI * 2);
+    ctx.fill();
+
+    // White face patch
+    ctx.fillStyle = '#f5f5f5';
+    ctx.beginPath();
+    ctx.ellipse(dir * 14, walkBounce - 6, 5, 4, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Ears
+    ctx.fillStyle = '#222';
+    ctx.beginPath();
+    ctx.moveTo(dir * 7, walkBounce - 16);
+    ctx.lineTo(dir * 4, walkBounce - 26);
+    ctx.lineTo(dir * 12, walkBounce - 19);
+    ctx.closePath();
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(dir * 17, walkBounce - 16);
+    ctx.lineTo(dir * 21, walkBounce - 26);
+    ctx.lineTo(dir * 22, walkBounce - 16);
+    ctx.closePath();
+    ctx.fill();
+
+    // Friendly eyes - round, big
+    ctx.fillStyle = '#4488ff';
+    ctx.beginPath();
+    ctx.arc(dir * 10, walkBounce - 11, 3, 0, Math.PI * 2);
+    ctx.arc(dir * 17, walkBounce - 11, 3, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Round pupils
+    ctx.fillStyle = '#111';
+    ctx.beginPath();
+    ctx.arc(dir * 10, walkBounce - 11, 1.5, 0, Math.PI * 2);
+    ctx.arc(dir * 17, walkBounce - 11, 1.5, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Eye highlights
+    ctx.fillStyle = '#fff';
+    ctx.beginPath();
+    ctx.arc(dir * 9, walkBounce - 12, 1, 0, Math.PI * 2);
+    ctx.arc(dir * 16, walkBounce - 12, 1, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Cute nose
+    ctx.fillStyle = '#ffaaaa';
+    ctx.beginPath();
+    ctx.arc(dir * 13, walkBounce - 6, 1.5, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Smile
+    ctx.strokeStyle = '#666';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(dir * 13, walkBounce - 4, 3, 0.1, Math.PI - 0.1);
+    ctx.stroke();
+
+    // Legs
+    const legAnim = Math.sin(t * 8 + zora.animOffset);
+    ctx.fillStyle = '#222';
+    // Front paws - white
+    ctx.beginPath();
+    ctx.ellipse(dir * 8 + legAnim * 2, walkBounce + 12, 3.5, 5, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#f5f5f5';
+    ctx.beginPath();
+    ctx.ellipse(dir * 8 + legAnim * 2, walkBounce + 15, 3, 2.5, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#222';
+    ctx.beginPath();
+    ctx.ellipse(dir * 2 - legAnim * 2, walkBounce + 12, 3.5, 5, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#f5f5f5';
+    ctx.beginPath();
+    ctx.ellipse(dir * 2 - legAnim * 2, walkBounce + 15, 3, 2.5, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // Back legs
+    ctx.fillStyle = '#222';
+    ctx.beginPath();
+    ctx.ellipse(-dir * 8 - legAnim * 2, walkBounce + 12, 3.5, 5, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(-dir * 13 + legAnim * 2, walkBounce + 12, 3.5, 5, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Tail
+    ctx.strokeStyle = '#222';
+    ctx.lineWidth = 2.5;
+    ctx.lineCap = 'round';
+    const tailW = Math.sin(t * 4 + zora.animOffset) * 8;
+    ctx.beginPath();
+    ctx.moveTo(-dir * 16, walkBounce);
+    ctx.bezierCurveTo(-dir * 24, walkBounce - 5, -dir * 30 + tailW, walkBounce - 15, -dir * 26 + tailW, walkBounce - 23);
+    ctx.stroke();
+    ctx.lineCap = 'butt';
+
+    // Heart above head
+    const heartBob = Math.sin(t * 3) * 3;
+    const heartY = walkBounce - 32 + heartBob;
+    const heartX = dir * 13;
+    ctx.fillStyle = `rgba(255, 100, 150, ${0.7 + Math.sin(t * 4) * 0.3})`;
+    ctx.beginPath();
+    ctx.moveTo(heartX, heartY + 3);
+    ctx.bezierCurveTo(heartX, heartY, heartX - 5, heartY - 3, heartX, heartY - 7);
+    ctx.bezierCurveTo(heartX + 5, heartY - 3, heartX, heartY, heartX, heartY + 3);
+    ctx.fill();
+
+    ctx.restore();
+}
+
+function drawWater(proj, t) {
+    // Trail
+    ctx.globalAlpha = 0.3;
+    for (let i = 0; i < proj.trail.length; i++) {
+        const tp = proj.trail[i];
+        const alpha = (i / proj.trail.length) * 0.3;
+        const size = (i / proj.trail.length) * 4 + 1;
+        ctx.fillStyle = `rgba(100, 180, 255, ${alpha})`;
+        ctx.beginPath();
+        ctx.arc(tp.x, tp.y, size, 0, Math.PI * 2);
+        ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+
+    // Main droplet
+    const glow = ctx.createRadialGradient(proj.x, proj.y, 0, proj.x, proj.y, 8);
+    glow.addColorStop(0, 'rgba(180, 220, 255, 1)');
+    glow.addColorStop(0.5, 'rgba(80, 160, 255, 0.8)');
+    glow.addColorStop(1, 'rgba(40, 100, 200, 0)');
+    ctx.fillStyle = glow;
+    ctx.beginPath();
+    ctx.arc(proj.x, proj.y, 8, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Core
+    ctx.fillStyle = '#aaddff';
+    ctx.beginPath();
+    ctx.arc(proj.x, proj.y, 4, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Highlight
+    ctx.fillStyle = 'rgba(255,255,255,0.8)';
+    ctx.beginPath();
+    ctx.arc(proj.x - 1, proj.y - 1, 1.5, 0, Math.PI * 2);
+    ctx.fill();
+}
+
+function drawCrosshair(x, y) {
+    ctx.strokeStyle = 'rgba(100, 200, 255, 0.7)';
+    ctx.lineWidth = 1.5;
+
+    // Outer circle
+    ctx.beginPath();
+    ctx.arc(x, y, 15, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Crosshair lines
+    const gap = 5;
+    const len = 10;
+    ctx.beginPath();
+    ctx.moveTo(x - gap, y); ctx.lineTo(x - gap - len, y);
+    ctx.moveTo(x + gap, y); ctx.lineTo(x + gap + len, y);
+    ctx.moveTo(x, y - gap); ctx.lineTo(x, y - gap - len);
+    ctx.moveTo(x, y + gap); ctx.lineTo(x, y + gap + len);
+    ctx.stroke();
+
+    // Center dot
+    ctx.fillStyle = 'rgba(100, 200, 255, 0.9)';
+    ctx.beginPath();
+    ctx.arc(x, y, 2, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Water drop shape
+    ctx.fillStyle = 'rgba(100, 200, 255, 0.4)';
+    ctx.beginPath();
+    ctx.moveTo(x, y - 20);
+    ctx.bezierCurveTo(x - 5, y - 14, x - 5, y - 10, x, y - 8);
+    ctx.bezierCurveTo(x + 5, y - 10, x + 5, y - 14, x, y - 20);
+    ctx.fill();
+}
+
+function drawHUD() {
+    // Lives - small mouse faces
+    for (let i = 0; i < state.maxLives; i++) {
+        const lx = 30 + i * 35;
+        const ly = 30;
+        if (i < state.lives) {
+            // Filled life
+            ctx.fillStyle = '#a0a0a0';
+            ctx.beginPath();
+            ctx.arc(lx, ly, 10, 0, Math.PI * 2);
+            ctx.fill();
+            // Ears
+            ctx.beginPath();
+            ctx.arc(lx - 7, ly - 9, 5, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = '#f0b0b0';
+            ctx.beginPath();
+            ctx.arc(lx - 7, ly - 9, 3, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = '#a0a0a0';
+            ctx.beginPath();
+            ctx.arc(lx + 7, ly - 9, 5, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = '#f0b0b0';
+            ctx.beginPath();
+            ctx.arc(lx + 7, ly - 9, 3, 0, Math.PI * 2);
+            ctx.fill();
+            // Eyes
+            ctx.fillStyle = '#222';
+            ctx.beginPath();
+            ctx.arc(lx - 4, ly - 2, 1.5, 0, Math.PI * 2);
+            ctx.arc(lx + 4, ly - 2, 1.5, 0, Math.PI * 2);
+            ctx.fill();
+        } else {
+            // Empty life
+            ctx.strokeStyle = 'rgba(160, 160, 160, 0.3)';
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.arc(lx, ly, 10, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.arc(lx - 7, ly - 9, 5, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.arc(lx + 7, ly - 9, 5, 0, Math.PI * 2);
+            ctx.stroke();
+        }
+    }
+
+    // Score
+    ctx.textAlign = 'right';
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 24px monospace';
+    ctx.shadowColor = '#000';
+    ctx.shadowBlur = 4;
+    ctx.fillText(`Score: ${state.score}`, canvas.width - 20, 35);
+
+    // Combo
+    if (state.combo > 1) {
+        const comboColors = ['#fff', '#ff0', '#f80', '#f00', '#f0f'];
+        const ci = Math.min(state.combo - 2, comboColors.length - 1);
+        ctx.fillStyle = comboColors[ci];
+        ctx.font = 'bold 18px monospace';
+        ctx.fillText(`x${state.combo} COMBO`, canvas.width - 20, 60);
+    }
+
+    ctx.shadowBlur = 0;
+    ctx.textAlign = 'left';
+
+    // Time
+    ctx.fillStyle = 'rgba(255,255,255,0.5)';
+    ctx.font = '14px monospace';
+    const mins = Math.floor(state.time / 60);
+    const secs = Math.floor(state.time % 60);
+    ctx.textAlign = 'center';
+    ctx.fillText(`${mins}:${secs.toString().padStart(2, '0')}`, canvas.width / 2, 25);
+    ctx.textAlign = 'left';
+
+    // Zora alert
+    if (state.zoraAlertTimer > 0) {
+        ctx.textAlign = 'center';
+        const alertAlpha = Math.min(state.zoraAlertTimer, 1);
+        ctx.fillStyle = `rgba(100, 255, 150, ${alertAlpha * 0.9})`;
+        ctx.font = 'bold 22px monospace';
+        ctx.shadowColor = '#000';
+        ctx.shadowBlur = 4;
+        ctx.fillText('Zora is coming!', canvas.width / 2, canvas.height - 40);
+        ctx.shadowBlur = 0;
+        ctx.textAlign = 'left';
+    }
+
+    // Floating texts
+    for (const ft of state.floatingTexts) {
+        ctx.textAlign = 'center';
+        ctx.globalAlpha = ft.life;
+        ctx.fillStyle = ft.color;
+        ctx.font = `bold ${ft.size}px monospace`;
+        ctx.shadowColor = '#000';
+        ctx.shadowBlur = 3;
+        ctx.fillText(ft.text, ft.x, ft.y);
+        ctx.shadowBlur = 0;
+        ctx.globalAlpha = 1;
+        ctx.textAlign = 'left';
+    }
+}
+
+function drawParticles() {
+    for (const p of state.particles) {
+        ctx.globalAlpha = p.life;
+        ctx.fillStyle = p.color;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.size * p.life, 0, Math.PI * 2);
+        ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+}
+
+function drawTitleScreen(t) {
+    // Dim overlay
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    ctx.textAlign = 'center';
+
+    // Title
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 48px monospace';
+    ctx.shadowColor = '#000';
+    ctx.shadowBlur = 8;
+    ctx.fillText('Cyprus Mouse Defense', canvas.width / 2, canvas.height / 2 - 120);
+
+    // Subtitle
+    ctx.fillStyle = '#ffa500';
+    ctx.font = '20px monospace';
+    ctx.fillText('Protect the mouse from the ginger cats!', canvas.width / 2, canvas.height / 2 - 80);
+
+    // Draw big mouse
+    drawMouse(canvas.width / 2, canvas.height / 2 - 10, t);
+
+    // Instructions
+    ctx.fillStyle = '#ccc';
+    ctx.font = '16px monospace';
+    const instructions = [
+        'Click to shoot water at evil cats',
+        'Orange cats = bad (steal lives)',
+        'Black & white cat Zora = good (gives lives)',
+        'Don\'t accidentally scare Zora!',
+    ];
+    instructions.forEach((line, i) => {
+        ctx.fillText(line, canvas.width / 2, canvas.height / 2 + 50 + i * 25);
+    });
+
+    // Start prompt
+    const blink = Math.sin(t * 3) > 0;
+    if (blink) {
+        ctx.fillStyle = '#4af';
+        ctx.font = 'bold 22px monospace';
+        ctx.fillText('Click to Start', canvas.width / 2, canvas.height / 2 + 180);
+    }
+
+    ctx.shadowBlur = 0;
+    ctx.textAlign = 'left';
+}
+
+function drawGameOverScreen(t) {
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.65)';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    ctx.textAlign = 'center';
+    ctx.shadowColor = '#000';
+    ctx.shadowBlur = 6;
+
+    // Game over text
+    ctx.fillStyle = '#ff4444';
+    ctx.font = 'bold 56px monospace';
+    ctx.fillText('GAME OVER', canvas.width / 2, canvas.height / 2 - 100);
+
+    // Stats
+    ctx.fillStyle = '#fff';
+    ctx.font = '22px monospace';
+    ctx.fillText(`Score: ${state.score}`, canvas.width / 2, canvas.height / 2 - 40);
+
+    ctx.fillStyle = '#ffd700';
+    ctx.font = '18px monospace';
+    ctx.fillText(`High Score: ${state.highScore}`, canvas.width / 2, canvas.height / 2 - 10);
+
+    ctx.fillStyle = '#ccc';
+    ctx.font = '16px monospace';
+    const mins = Math.floor(state.time / 60);
+    const secs = Math.floor(state.time % 60);
+    ctx.fillText(`Time: ${mins}:${secs.toString().padStart(2, '0')}  |  Cats scared: ${state.catsScared}`, canvas.width / 2, canvas.height / 2 + 30);
+
+    // Restart prompt
+    const blink = Math.sin(t * 3) > 0;
+    if (blink) {
+        ctx.fillStyle = '#4af';
+        ctx.font = 'bold 20px monospace';
+        ctx.fillText('Click to Play Again', canvas.width / 2, canvas.height / 2 + 90);
+    }
+
+    ctx.shadowBlur = 0;
+    ctx.textAlign = 'left';
+}
+
+// ==================== GAME LOGIC ====================
+
+function spawnEnemy() {
+    const edge = Math.floor(Math.random() * 4);
+    let x, y;
+    const margin = 60;
+    switch (edge) {
+        case 0: x = Math.random() * canvas.width; y = -margin; break;
+        case 1: x = canvas.width + margin; y = Math.random() * canvas.height; break;
+        case 2: x = Math.random() * canvas.width; y = canvas.height + margin; break;
+        case 3: x = -margin; y = Math.random() * canvas.height; break;
+    }
+
+    const baseSpeed = 50 + Math.random() * 30;
+    const speedMult = 1 + state.time / 300;
+
+    state.enemies.push({
+        x, y,
+        speed: baseSpeed * Math.min(speedMult, 2.5),
+        state: 'approaching',
+        fleeDir: { x: 0, y: 0 },
+        fleeTimer: 0,
+        animOffset: Math.random() * Math.PI * 2,
+        size: 22,
+        color: `hsl(${25 + Math.random() * 15}, ${80 + Math.random() * 20}%, ${50 + Math.random() * 15}%)`,
+    });
+}
+
+function spawnZora() {
+    if (state.zora) return;
+
+    const edge = Math.floor(Math.random() * 4);
+    let x, y;
+    const margin = 60;
+    switch (edge) {
+        case 0: x = Math.random() * canvas.width; y = -margin; break;
+        case 1: x = canvas.width + margin; y = Math.random() * canvas.height; break;
+        case 2: x = Math.random() * canvas.width; y = canvas.height + margin; break;
+        case 3: x = -margin; y = Math.random() * canvas.height; break;
+    }
+
+    state.zora = {
+        x, y,
+        speed: 40,
+        state: 'approaching',
+        fleeDir: { x: 0, y: 0 },
+        fleeTimer: 0,
+        animOffset: Math.random() * Math.PI * 2,
+        size: 20,
+    };
+
+    state.zoraAlertTimer = 3.0;
+    state.zoraEncounters++;
+}
+
+function shootWater() {
+    const mx = state.mousePos.x;
+    const my = state.mousePos.y;
+    const dx = state.cursorPos.x - mx;
+    const dy = state.cursorPos.y - my;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist < 1) return;
+
+    const speed = 500;
+    state.projectiles.push({
+        x: mx,
+        y: my,
+        vx: (dx / dist) * speed,
+        vy: (dy / dist) * speed,
+        lifetime: 2.0,
+        age: 0,
+        trail: [],
+    });
+}
+
+function spawnParticles(x, y, color, count, speedMult) {
+    for (let i = 0; i < count; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const spd = (30 + Math.random() * 80) * (speedMult || 1);
+        state.particles.push({
+            x, y,
+            vx: Math.cos(angle) * spd,
+            vy: Math.sin(angle) * spd,
+            life: 1.0,
+            decay: 0.8 + Math.random() * 1.5,
+            color,
+            size: 2 + Math.random() * 4,
+        });
+    }
+}
+
+function addFloatingText(x, y, text, color, size) {
+    state.floatingTexts.push({
+        x, y, text, color,
+        size: size || 20,
+        life: 1.0,
+        vy: -40,
+    });
+}
+
+function circlesCollide(x1, y1, r1, x2, y2, r2) {
+    const dx = x2 - x1;
+    const dy = y2 - y1;
+    return dx * dx + dy * dy <= (r1 + r2) * (r1 + r2);
+}
+
+// ==================== UPDATE ====================
+
+function update(dt) {
+    state.time += dt;
+
+    // Cap dt to prevent jumps
+    if (dt > 0.1) dt = 0.1;
+
+    // Spawn timers
+    state.spawnTimer -= dt;
+    if (state.spawnTimer <= 0) {
+        const spawnInterval = Math.max(0.4, 2.0 - (state.time / 60) * 0.3);
+        state.spawnTimer = spawnInterval;
+
+        spawnEnemy();
+
+        // Multi-spawn
+        if (state.time > 120 && Math.random() < 0.2) spawnEnemy();
+        if (state.time > 240 && Math.random() < 0.3) spawnEnemy();
+    }
+
+    // Zora timer
+    state.zoraTimer -= dt;
+    if (state.zoraTimer <= 0) {
+        spawnZora();
+        state.zoraTimer = 20 + Math.random() * 15;
+    }
+
+    // Zora alert timer
+    if (state.zoraAlertTimer > 0) state.zoraAlertTimer -= dt;
+
+    // Screen shake decay
+    if (state.screenShake > 0) state.screenShake -= dt * 8;
+
+    // Update projectiles
+    for (let i = state.projectiles.length - 1; i >= 0; i--) {
+        const p = state.projectiles[i];
+        p.trail.push({ x: p.x, y: p.y });
+        if (p.trail.length > 10) p.trail.shift();
+
+        p.x += p.vx * dt;
+        p.y += p.vy * dt;
+        p.age += dt;
+
+        if (p.age >= p.lifetime ||
+            p.x < -50 || p.x > canvas.width + 50 ||
+            p.y < -50 || p.y > canvas.height + 50) {
+            state.projectiles.splice(i, 1);
+        }
+    }
+
+    // Update enemies
+    for (let i = state.enemies.length - 1; i >= 0; i--) {
+        const e = state.enemies[i];
+
+        if (e.state === 'approaching') {
+            const dx = state.mousePos.x - e.x;
+            const dy = state.mousePos.y - e.y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            if (dist > 1) {
+                e.x += (dx / dist) * e.speed * dt;
+                e.y += (dy / dist) * e.speed * dt;
+            }
+        } else if (e.state === 'fleeing') {
+            e.x += e.fleeDir.x * e.speed * 2 * dt;
+            e.y += e.fleeDir.y * e.speed * 2 * dt;
+            e.fleeTimer -= dt;
+            if (e.fleeTimer <= 0 ||
+                e.x < -100 || e.x > canvas.width + 100 ||
+                e.y < -100 || e.y > canvas.height + 100) {
+                state.enemies.splice(i, 1);
+                continue;
+            }
+        }
+    }
+
+    // Update Zora
+    if (state.zora) {
+        const z = state.zora;
+        if (z.state === 'approaching') {
+            const dx = state.mousePos.x - z.x;
+            const dy = state.mousePos.y - z.y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            if (dist > 1) {
+                z.x += (dx / dist) * z.speed * dt;
+                z.y += (dy / dist) * z.speed * dt;
+            }
+        } else if (z.state === 'fleeing') {
+            z.x += z.fleeDir.x * z.speed * 2 * dt;
+            z.y += z.fleeDir.y * z.speed * 2 * dt;
+            z.fleeTimer -= dt;
+            if (z.fleeTimer <= 0 ||
+                z.x < -100 || z.x > canvas.width + 100 ||
+                z.y < -100 || z.y > canvas.height + 100) {
+                state.zora = null;
+            }
+        }
+    }
+
+    // Collision: projectile vs enemies
+    for (let pi = state.projectiles.length - 1; pi >= 0; pi--) {
+        const p = state.projectiles[pi];
+        let hit = false;
+
+        for (let ei = state.enemies.length - 1; ei >= 0; ei--) {
+            const e = state.enemies[ei];
+            if (e.state !== 'approaching') continue;
+
+            if (circlesCollide(p.x, p.y, 6, e.x, e.y, e.size)) {
+                // Hit enemy
+                e.state = 'fleeing';
+                const dx = e.x - p.x;
+                const dy = e.y - p.y;
+                const d = Math.sqrt(dx * dx + dy * dy) || 1;
+                e.fleeDir = { x: dx / d, y: dy / d };
+                e.fleeTimer = 2.0;
+
+                state.combo++;
+                const points = 100 * state.combo;
+                state.score += points;
+                state.catsScared++;
+
+                spawnParticles(p.x, p.y, '#66bbff', 8, 1);
+                spawnParticles(e.x, e.y, '#ff8800', 5, 0.5);
+                addFloatingText(e.x, e.y - 30, `+${points}`, '#fff', 18);
+
+                if (state.combo === 5) addFloatingText(canvas.width / 2, canvas.height / 2 - 60, 'Nice!', '#ff0', 28);
+                if (state.combo === 10) addFloatingText(canvas.width / 2, canvas.height / 2 - 60, 'Awesome!', '#f80', 32);
+                if (state.combo === 20) addFloatingText(canvas.width / 2, canvas.height / 2 - 60, 'LEGENDARY!', '#f0f', 40);
+
+                hit = true;
+                break;
+            }
+        }
+
+        // Projectile vs Zora
+        if (!hit && state.zora && state.zora.state === 'approaching') {
+            if (circlesCollide(p.x, p.y, 6, state.zora.x, state.zora.y, state.zora.size)) {
+                const z = state.zora;
+                z.state = 'fleeing';
+                const dx = z.x - p.x;
+                const dy = z.y - p.y;
+                const d = Math.sqrt(dx * dx + dy * dy) || 1;
+                z.fleeDir = { x: dx / d, y: dy / d };
+                z.fleeTimer = 2.0;
+
+                state.score = Math.max(0, state.score - 200);
+                state.combo = 0;
+                spawnParticles(p.x, p.y, '#66bbff', 6, 1);
+                addFloatingText(z.x, z.y - 30, '-200', '#ff4444', 20);
+                addFloatingText(z.x, z.y - 55, 'Oh no, Zora!', '#ff8888', 16);
+                hit = true;
+            }
+        }
+
+        if (hit) {
+            state.projectiles.splice(pi, 1);
+        }
+    }
+
+    // Collision: enemy vs mouse
+    const mouseHitR = 20;
+    for (let i = state.enemies.length - 1; i >= 0; i--) {
+        const e = state.enemies[i];
+        if (e.state !== 'approaching') continue;
+
+        if (circlesCollide(state.mousePos.x, state.mousePos.y, mouseHitR, e.x, e.y, e.size)) {
+            state.lives--;
+            state.combo = 0;
+            state.screenShake = 1.0;
+            state.enemies.splice(i, 1);
+            spawnParticles(state.mousePos.x, state.mousePos.y, '#ff4444', 12, 1.5);
+            addFloatingText(state.mousePos.x, state.mousePos.y - 40, '-1 Life', '#ff4444', 24);
+
+            if (state.lives <= 0) {
+                state.screen = 'gameover';
+                if (state.score > state.highScore) {
+                    state.highScore = state.score;
+                    localStorage.setItem('cyprusMouseHighScore', state.highScore.toString());
+                }
+            }
+        }
+    }
+
+    // Collision: Zora vs mouse
+    if (state.zora && state.zora.state === 'approaching') {
+        if (circlesCollide(state.mousePos.x, state.mousePos.y, mouseHitR, state.zora.x, state.zora.y, state.zora.size)) {
+            if (state.lives < state.maxLives) state.lives++;
+            state.score += 500;
+            spawnParticles(state.mousePos.x, state.mousePos.y, '#66ff88', 15, 1.2);
+            spawnParticles(state.mousePos.x, state.mousePos.y, '#ffd700', 10, 0.8);
+            addFloatingText(state.mousePos.x, state.mousePos.y - 40, '+1 Life!', '#66ff88', 26);
+            addFloatingText(state.mousePos.x, state.mousePos.y - 70, '+500', '#ffd700', 20);
+            state.zora = null;
+        }
+    }
+
+    // Update particles
+    for (let i = state.particles.length - 1; i >= 0; i--) {
+        const p = state.particles[i];
+        p.x += p.vx * dt;
+        p.y += p.vy * dt;
+        p.life -= p.decay * dt;
+        if (p.life <= 0) state.particles.splice(i, 1);
+    }
+    // Cap particles
+    if (state.particles.length > 200) {
+        state.particles.splice(0, state.particles.length - 200);
+    }
+
+    // Update floating texts
+    for (let i = state.floatingTexts.length - 1; i >= 0; i--) {
+        const ft = state.floatingTexts[i];
+        ft.y += ft.vy * dt;
+        ft.life -= dt * 0.7;
+        if (ft.life <= 0) state.floatingTexts.splice(i, 1);
+    }
+}
+
+// ==================== DRAW ====================
+
+function draw(timestamp) {
+    const t = timestamp / 1000;
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // Render & draw background
+    renderBackground();
+    if (state.bgCache) {
+        // Screen shake offset
+        let shakeX = 0, shakeY = 0;
+        if (state.screenShake > 0) {
+            shakeX = (Math.random() - 0.5) * state.screenShake * 12;
+            shakeY = (Math.random() - 0.5) * state.screenShake * 12;
+        }
+
+        ctx.save();
+        ctx.translate(shakeX, shakeY);
+
+        ctx.drawImage(state.bgCache, 0, 0);
+
+        // Draw projectiles
+        for (const p of state.projectiles) {
+            drawWater(p, t);
+        }
+
+        // Draw particles
+        drawParticles();
+
+        // Draw enemies
+        for (const e of state.enemies) {
+            drawCat(e, t);
+        }
+
+        // Draw Zora
+        if (state.zora) {
+            drawZora(state.zora, t);
+        }
+
+        // Draw player mouse
+        drawMouse(state.mousePos.x, state.mousePos.y, t);
+
+        ctx.restore();
+
+        // HUD and cursor (no shake)
+        if (state.screen === 'playing') {
+            drawHUD();
+            drawCrosshair(state.cursorPos.x, state.cursorPos.y);
+        }
+    }
+
+    // Screen overlays
+    if (state.screen === 'title') {
+        drawTitleScreen(t);
+    } else if (state.screen === 'gameover') {
+        drawHUD();
+        drawGameOverScreen(t);
+    }
+}
+
+// ==================== GAME LOOP ====================
+
+function gameLoop(timestamp) {
+    if (!state.lastTimestamp) state.lastTimestamp = timestamp;
+    const dt = (timestamp - state.lastTimestamp) / 1000;
+    state.lastTimestamp = timestamp;
+
+    if (state.screen === 'playing') {
+        update(dt);
+    }
+
+    draw(timestamp);
+    requestAnimationFrame(gameLoop);
+}
+
+// ==================== INPUT ====================
+
+canvas.addEventListener('mousemove', (e) => {
+    state.cursorPos.x = e.clientX;
+    state.cursorPos.y = e.clientY;
+});
+
+canvas.addEventListener('click', (e) => {
+    if (state.screen === 'title') {
+        state.screen = 'playing';
+        return;
+    }
+    if (state.screen === 'gameover') {
+        initState();
+        state.screen = 'playing';
+        state.mousePos.x = canvas.width / 2;
+        state.mousePos.y = canvas.height / 2;
+        return;
+    }
+    if (state.screen === 'playing') {
+        state.cursorPos.x = e.clientX;
+        state.cursorPos.y = e.clientY;
+        shootWater();
+    }
+});
+
+// Prevent context menu
+canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+
+// ==================== INIT ====================
+initState();
+resizeCanvas();
+requestAnimationFrame(gameLoop);
+</script>
+</body>
+</html>

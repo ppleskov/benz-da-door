@@ -96,17 +96,17 @@ function renderBackground() {
         octx.stroke();
     }
 
-    // Draw Cyprus satellite image
+    // Draw Cyprus satellite image (contain — whole island always visible)
     if (cyprusImgLoaded) {
         const imgAspect = cyprusImg.width / cyprusImg.height;
         const canvasAspect = offscreen.width / offscreen.height;
         let drawW, drawH;
         if (canvasAspect > imgAspect) {
-            drawW = offscreen.width * 0.92;
-            drawH = drawW / imgAspect;
-        } else {
-            drawH = offscreen.height * 0.85;
+            drawH = offscreen.height;
             drawW = drawH * imgAspect;
+        } else {
+            drawW = offscreen.width;
+            drawH = drawW / imgAspect;
         }
         const drawX = (offscreen.width - drawW) / 2;
         const drawY = (offscreen.height - drawH) / 2;
@@ -128,8 +128,18 @@ function drawMouse(x, y, t) {
 
     ctx.save();
 
+    // Glow circle behind mouse for contrast
+    const glow = ctx.createRadialGradient(x, cy, 5, x, cy, 45);
+    glow.addColorStop(0, 'rgba(255, 255, 255, 0.55)');
+    glow.addColorStop(0.6, 'rgba(255, 255, 255, 0.2)');
+    glow.addColorStop(1, 'rgba(255, 255, 255, 0)');
+    ctx.fillStyle = glow;
+    ctx.beginPath();
+    ctx.arc(x, cy, 45, 0, Math.PI * 2);
+    ctx.fill();
+
     // Body
-    ctx.fillStyle = '#a0a0a0';
+    ctx.fillStyle = '#e0e0e0';
     ctx.beginPath();
     ctx.ellipse(x, cy, 22, 16, 0, 0, Math.PI * 2);
     ctx.fill();
@@ -137,14 +147,19 @@ function drawMouse(x, y, t) {
     ctx.lineWidth = 1;
     ctx.stroke();
 
+    // White outline
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 2.5;
+    ctx.stroke();
+
     // Belly
-    ctx.fillStyle = '#c0c0c0';
+    ctx.fillStyle = '#f0f0f0';
     ctx.beginPath();
     ctx.ellipse(x, cy + 3, 14, 10, 0, 0, Math.PI * 2);
     ctx.fill();
 
     // Left ear
-    ctx.fillStyle = '#a0a0a0';
+    ctx.fillStyle = '#e0e0e0';
     ctx.beginPath();
     ctx.ellipse(x - 14, cy - 14, 9, 10, -0.3, 0, Math.PI * 2);
     ctx.fill();
@@ -156,7 +171,7 @@ function drawMouse(x, y, t) {
     ctx.fill();
 
     // Right ear
-    ctx.fillStyle = '#a0a0a0';
+    ctx.fillStyle = '#e0e0e0';
     ctx.beginPath();
     ctx.ellipse(x + 14, cy - 14, 9, 10, 0.3, 0, Math.PI * 2);
     ctx.fill();
